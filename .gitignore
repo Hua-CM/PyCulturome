@@ -1,0 +1,5 @@
+README_internal.md
+*.fq
+example/temp/
+__pycache__
+example/output/
