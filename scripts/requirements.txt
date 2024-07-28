@@ -1,0 +1,5 @@
+numpy
+pandas > 2.0.0
+ete3 > 3.0.0
+seaborn > 0.13.0
+matplotlib > 3.6.0
