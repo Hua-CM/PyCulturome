@@ -24,20 +24,23 @@ mpl.rcParams['pdf.use14corefonts'] = True
 
 def tidy_taxonomy(taxonomy_path: Path):
     """Tidy taxonomy annotation generated from SINTAX
-
     Args:
         taxonomy_path (Path): _description_
 
     Returns:
-        _type_: _description_
+        tb_tax8 (pd.DataFrame): The taxonomy information table with 8 columns
     """
     tb_tax = pd.read_table(taxonomy_path, header=None)
-    tb_tax_new = pd.DataFrame(tb_tax[0])
-    tb_tax_new[['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species']] = tb_tax[3].str.split(',', expand=True).\
+    tb_tax8 = pd.DataFrame(tb_tax[0])
+    # make rank level more flexible
+    _tb_tmp = tb_tax[3].str.split(',', expand=True).\
         fillna('Unclassified').\
-            replace('[dpcofgs]:', '', regex=True)
-    tb_tax_new.rename(columns={0: 'OTUID'}, inplace=True)
-    return tb_tax_new
+        replace('[dpcofgs]:', '', regex=True)
+    rank_num= len(_tb_tmp.columns)
+    rank_name = ['Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species'][0:rank_num]
+    tb_tax8[rank_name] = _tb_tmp
+    tb_tax8.rename(columns={0: 'OTUID'}, inplace=True)
+    return tb_tax8
 
 
 class SummaryLibrary:
@@ -49,10 +52,9 @@ class SummaryLibrary:
         self.well_neg = control_neg
         self.purity_thresh = threshold
         self.taxonomy = taxonomy
-        # 
+
         self.df_positive = self.detect_pos_wells()
-        self.df_purified = self.detect_purified_wells()
-        self.df_asv_recommend = self.detect_recommend_wells()
+        self.df_purified, self.df_asv_recommend = self.detect_purified_wells()
         self.tree = self.construct_tree()
 
     def detect_pos_wells(self):
@@ -146,25 +148,48 @@ class SummaryLibrary:
         _df_count = self.df_count[self.df_count['tmpwell'].isin(self.df_positive['tmpwell'].to_list())]
 
         wells_dct = defaultdict(dict)
+        otu_dct = defaultdict(dict)
         for _idx, _row in _df_count.iterrows():
             wells_dct[f'{_row["plate"]}_{_row["well"]}'].update({_row['OTUID']: _row['reads']})
         # detect purified wells
         purified_well_lst = []
         for _well, _otu_dct in wells_dct.items():
+            _tot_well_reads = sum(_otu_dct.values())           
+            # Calculate purity for each ASV for subsequent analysis
+            for _otu, _reads in _otu_dct.items():
+                otu_dct[_otu].update({_well: _reads / _tot_well_reads})
+            # For this well
             _max_key = max(_otu_dct, key=_otu_dct.get)
-            _purity = (_otu_dct[_max_key] / sum(_otu_dct.values()))
-            _puritified_well = bool(_purity > self.purity_thresh)
+            _purity = (_otu_dct[_max_key] / _tot_well_reads)
+            _puritified_well = bool(_purity >= self.purity_thresh)
             purified_well_lst.append({'tmpwell': _well,
                                       'OTUID': _max_key,
                                       'purity': _purity,
                                       'purified_well': _puritified_well})
         df_purity = pd.DataFrame(purified_well_lst)
-        
+
         df_purity = self.df_positive.merge(df_purity, how='left')
         df_purity.drop('tmpwell', axis=1, inplace=True)
+
+        # detect recommend well for each ASV
+        recommend_well_lst = []
+        for _otu, _well_dct in otu_dct.items():
+            _max_key = max(_well_dct, key=_well_dct.get)
+            _purity = _well_dct[_max_key]
+            _puritified_well = bool(_purity >= self.purity_thresh)
+            recommend_well_lst.append({'tmpwell':_max_key,
+                                       'OTUID': _otu,
+                                       'purity': _purity,
+                                       'purified_well': _puritified_well})
+        df_asv_recommend = pd.DataFrame(recommend_well_lst)
+        
+        df_asv_recommend = self.df_positive.merge(df_asv_recommend, how='left')
+        df_asv_recommend.drop('tmpwell', axis=1, inplace=True)
+        
+        # tidy input
         self.df_positive.drop('tmpwell', axis=1, inplace=True)
         self.df_count.drop('tmpwell', axis=1, inplace=True)
-        return df_purity
+        return df_purity, df_asv_recommend
 
     def draw_purity_freq(self):
         """Draw the frequency histogram of purified wells
@@ -214,17 +239,6 @@ class SummaryLibrary:
                xlabel='Well numbers',
                ylabel='ASV number')
         return fig
-
-
-    def detect_recommend_wells(self):
-        """Recommend wells for each ASV
-
-        Returns:
-            _type_: _description_
-        """
-        _df_raw = self.df_purified[self.df_purified['purified_well']==True]
-        _df_res = _df_raw.groupby('OTUID').max(['purity', 'reads']).reset_index()
-        return _df_res
 
 
     def construct_tree(self):

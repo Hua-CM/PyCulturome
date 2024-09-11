@@ -14,9 +14,9 @@ pip install -r reuirements.txt
 python scripts/pipe.py
 ~~~
 
-## Usage
+## Major usage
 
-An example running 
+An example
 
 ~~~shell
 python /path/to/PyCulturome/scripts/pipe.py \
@@ -65,6 +65,25 @@ Recommended well numbers for separating each ASV.
 - **Rarefication.pdf**: The rarefication curve of ASVs along with the number of wells
 
 - **Tree.pdf**: The taxonomic tree of isolated strains.
+
+## Other usage 
+
+This script although provide some gadget to help researchers implement other steps
+in NGS culturome
+
+### Purification
+
+A considerable amount of Sanger sequencing is required during the purification process. PyCulturome provides a tool for automatically assembling these Sanger sequencing reads and summarizing the results.
+
+~~~shell
+python src/sanger.py 
+-i /path/to/input_directory
+-d /path/to/16S_db
+~~~
+
+The NCBI 16S rRNA gene database (16S_ribosomal_RNA.tar.gz) could be downloaded from https://ftp.ncbi.nlm.nih.gov/blast/db/.
+
+
 
 ## Dependency
 1. [usearch](https://github.com/rcedgar/usearch_old_binaries) > v11

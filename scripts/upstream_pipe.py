@@ -15,10 +15,14 @@ from pathlib import Path
 import subprocess as sp
 import sys
 
+from Bio import SeqIO
 import pandas as pd
 
-from assign_sample import parse_barcodes, change_seqid
-from summary_library import summary_library
+# 添加项目根目录到 sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from PyCulturome.upstream.assign_sample import parse_barcodes, change_seqid
+from PyCulturome.upstream.summary_library import summary_library
 
 logger = logging.getLogger('Culturome')
 logger.setLevel('INFO')
@@ -28,6 +32,45 @@ stream_handler.setFormatter(formatter)
 # 使用setHandler对记录器的处理器进行设置
 logger.addHandler(stream_handler)
 
+
+def get_common_prefix(fq_file1, fq_file2):
+    """Get sample name based on fastq paired files
+
+    Args:
+        fq_file1 (str): _description_
+        fq_file2 (str): _description_
+
+    Returns:
+        str: sample name
+    """
+    min_length = min(len(fq_file1), len(fq_file2))
+    common_prefix = []
+
+    for i in range(min_length):
+        if fq_file1[i] == fq_file2[i]:
+            common_prefix.append(fq_file1[i])
+        else:
+            break
+    return ''.join(common_prefix).strip('._')
+
+
+def remove_contamination(rep_fa_path: Path, rep_fa_tax: Path):
+    """
+    !!! Use this function with caution. !!!
+    !!! NOT USE FOR NOW !!!
+
+    Args:
+        rep_fa_path (Path): _description_
+        rep_fa_tax (Path): _description_
+    """
+    tb_tax = pd.read_table(rep_fa_tax)
+    ecoli_lst = tb_tax.loc[tb_tax['Phylum'] == 'Unclassified', 'OTUID'].to_list()
+    tb_tax = tb_tax[~tb_tax['OTUID'].isin(ecoli_lst)]
+    out_seqs = [_seq for _seq in SeqIO.parse(rep_fa_path, 'fasta') if _seq.id not in ecoli_lst]
+    # Output sequence
+    SeqIO.write(out_seqs, rep_fa_path, 'fasta')
+    # Output taxonomic table
+    tb_tax.to_csv(rep_fa_tax, sep='\t', index=False)
 
 
 def parse_args():
@@ -54,8 +97,8 @@ def parse_args():
                         help='<str> Positive control well ID. Default: B12')
     parser.add_argument('-n', '--negative', type=str, default='A12',
                         help='<str> Negative control well ID. Default: A12')
-    parser.add_argument('--threshold', type=float, default=0.95,
-                        help='<float> Threshold for determining purified wells. Default: 0.95')
+    parser.add_argument('--threshold', type=float, default=0.9,
+                        help='<float> Threshold for determining purified wells. Default: 0.90')
     args = parser.parse_args()
     return args
 
@@ -104,23 +147,33 @@ def run_pipeline(para_dct):
            '-zotus', para_dct['output'] / f'{para_dct["libname"]}.rep.fa'],
            check=True)
 
-    logger.info('step4: Generate asv count table')
-    sp.run([para_dct['vsearch'],
-            '-usearch_global', para_dct['outtmp'] / f'{para_dct["libname"]}.filtered.fa',
-            '-db', para_dct['output'] / f'{para_dct["libname"]}.rep.fa',
-            '-otutabout', para_dct['output'] / f'{para_dct["libname"]}.abun.tsv',
-            #'-strand', 'both',
-            '-id', '0.97',
-            '-threads', '8'],
-            check=True)
-
-    logger.info('step5: Annotate ASV')
+    logger.info('step4: Annotate ASV')
     sp.run([para_dct['vsearch'],
             '-sintax', para_dct['output'] / f'{para_dct["libname"]}.rep.fa',
             '-db', para_dct['db'],
             '-tabbedout', para_dct['outtmp'] / f'{para_dct["libname"]}.sintax',
-            #'-strand', 'both',
+            #'-strand', 'both', # Only for usearch, not vsearch
             '-sintax_cutoff', '0.8'],
+            check=True)
+
+    """
+    logger.info('step5: Filter out contamination')
+    sp.run([para_dct['output'] / f'{para_dct["libname"]}.rep.fa',
+            '-db', para_dct['db'],
+            '-tabbedout', para_dct['outtmp'] / f'{para_dct["libname"]}.sintax',
+            #'-strand', 'both', # Only for usearch, not vsearch
+            '-sintax_cutoff', '0.8'],
+            check=True)
+    """
+
+    logger.info('step5: Generate asv count table')
+    sp.run([para_dct['vsearch'],
+            '-usearch_global', para_dct['outtmp'] / f'{para_dct["libname"]}.filtered.fa',
+            '-db', para_dct['output'] / f'{para_dct["libname"]}.rep.fa',
+            '-otutabout', para_dct['output'] / f'{para_dct["libname"]}.abun.tsv',
+            #'-strand', 'both', # Only for usearch, not vsearch
+            '-id', '0.97',
+            '-threads', '8'],
             check=True)
 
     logger.info('step6: Summary library results')
@@ -130,27 +183,6 @@ def run_pipeline(para_dct):
                     para_dct['positive'],
                     para_dct['negative'],
                     para_dct['threshold'])
-
-
-def get_common_prefix(fq_file1, fq_file2):
-    """Get sample name based on fastq paired files
-
-    Args:
-        fq_file1 (str): _description_
-        fq_file2 (str): _description_
-
-    Returns:
-        str: sample name
-    """
-    min_length = min(len(fq_file1), len(fq_file2))
-    common_prefix = []
-
-    for i in range(min_length):
-        if fq_file1[i] == fq_file2[i]:
-            common_prefix.append(fq_file1[i])
-        else:
-            break
-    return ''.join(common_prefix).strip('._')
 
 
 def main():
