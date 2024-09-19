@@ -6,6 +6,7 @@
 # @Note    :   
 # @E-mail  :   njbxhzy@hotmail.com
 import argparse
+import logging
 from pathlib import Path
 import sys
 
@@ -103,6 +104,13 @@ def parse_args():
 
 
 def main(para_dct):
+    logger = logging.getLogger('PyCulturome')
+    logger.setLevel(logging.INFO)
+    stream_handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
     func_dct = {'sanger': sanger_main,
                 'validate': validate_asv,
                 'update': update_db_main,
