@@ -174,18 +174,20 @@ class SummaryLibrary:
         # detect recommend well for each ASV
         recommend_well_lst = []
         for _otu, _well_dct in otu_dct.items():
-            _max_key = max(_well_dct, key=_well_dct.get)
-            _purity = _well_dct[_max_key]
-            _puritified_well = bool(_purity >= self.purity_thresh)
-            recommend_well_lst.append({'tmpwell':_max_key,
-                                       'OTUID': _otu,
-                                       'purity': _purity,
-                                       'purified_well': _puritified_well})
+            _max_keys = sorted(_well_dct, key=_well_dct.get, reverse=True)[:2] # Return top2 wells for each ASV
+            for _key in _max_keys:
+                _purity = _well_dct[_key]
+                _puritified_well = bool(_purity >= self.purity_thresh)
+                recommend_well_lst.append({'tmpwell':_key,
+                                        'OTUID': _otu,
+                                        'purity': _purity,
+                                        'purified_well': _puritified_well})
         df_asv_recommend = pd.DataFrame(recommend_well_lst)
         
-        df_asv_recommend = self.df_positive.merge(df_asv_recommend, how='left')
+        df_asv_recommend = self.df_positive.merge(df_asv_recommend, how='right')
         df_asv_recommend.drop('tmpwell', axis=1, inplace=True)
-        
+        df_asv_recommend.sort_values(by=['OTUID', 'purity'], ascending=[True, False])
+
         # tidy input
         self.df_positive.drop('tmpwell', axis=1, inplace=True)
         self.df_count.drop('tmpwell', axis=1, inplace=True)

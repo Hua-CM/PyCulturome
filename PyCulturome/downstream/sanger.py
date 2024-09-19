@@ -10,7 +10,6 @@ from collections import defaultdict
 import logging
 from pathlib import Path
 import re
-import sys
 
 from Bio.Blast.Applications import NcbiblastnCommandline
 from Bio import SeqIO
@@ -152,35 +151,3 @@ def sanger_main(para_dict):
                 'fasta')
     #shutil.rmtree(para_dict['tmp_dir'])
 
-def parse_args():
-    """Parse arguments
-    """
-    parser = argparse.ArgumentParser(description="Example with -1 and -2 options")
-    parser.add_argument('-i', '--input', required=True, type=Path, dest='input_dir',
-                        help='<file_path> Directory containing Sanger sequencing reads end with ".ab1".')
-    parser.add_argument('-m', '--meta', required=True, type=Path, dest='meta_path',
-                        help='<file_path> The meta info to match PCR plate and picked clones.')
-    parser.add_argument('-d', '--db', required=True, type=Path, dest='db_path',
-                        help='<file_path> The NCBI 16S rRNA gene database')
-    parser.add_argument('-o', '--output', required=True, type=Path, dest='out_path',
-                        help='<directory_path> The output directory path.')
-    parser.add_argument('-f', '--fwr', type=str, dest='f_primer', default='27F',
-                        help='<str> Forward primer name. Default: 27F')
-    parser.add_argument('-r', '--rev', type=str, dest='r_primer', default='1492R',
-                        help='<str> Reverse primer name. Default: 1492R')
-    parser.add_argument('-e', '--extra', type=str, dest='extra_str', default='',
-                        help='<str> Extra characters in file names that need to be removed')
-    parser.add_argument('--blast', type=Path, dest='blast_dir', default=Path(''),
-                        help='<file_path> The path to BLAST binary directory (if it is not in PATH)')
-    parser.add_argument('--muscle', type=Path, dest='muscle_path', default=Path('muscle'),
-                        help='<file_path> The path to MUSCLE5 (if it is not in PATH)')
-    parser.add_argument('--threads', type=int, default=4,
-                        help='<int> Threads for BLAST. Default: 4')
-    parser.add_argument('--tmp', type=Path, dest='tmp_dir', default=Path('tmp'),
-                        help='<int> Temperory directory path. Default: ./tmp')
-    args = parser.parse_args()
-    return args
-
-if __name__ == '__main__':
-    ARGS = parse_args()
-    sanger_main(vars(ARGS))

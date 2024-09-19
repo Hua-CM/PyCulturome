@@ -19,32 +19,7 @@ from Bio import AlignIO
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 
-logger = logging.getLogger('muscle')
-logger.setLevel(logging.INFO)
-ch = logging.StreamHandler()
-logger.addHandler(ch)
-
-def calculate_distance_old(str1, str2):
-    """!!OBSOLETE!!
-
-    Args:
-        str1 (_type_): _description_
-        str2 (_type_): _description_
-
-    Raises:
-        ValueError: _description_
-
-    Returns:
-        _type_: _description_
-    """
-    if len(str1) != len(str2):
-        raise ValueError("The two strings must be of the same length")
-
-    distance = 0
-    for char1, char2 in zip(str1, str2):
-        if char1 != char2 and char1 != '-' and char2 != '-':
-            distance += 1
-    return distance
+logger = logging.getLogger(__name__)
 
 def calculate_distance(str1, str2, gap='-'):
     """_summary_
@@ -104,9 +79,8 @@ def muscle_align(seq_lst: List[SeqRecord], tmp_dir: Path, bin_path='muscle'):
     Returns:
         Align.MultipleSeqAlignment: _description_
     """
-    # Create a PairwiseAligner object
+    # using MUSCLE5 to align
     SeqIO.write(seq_lst, tmp_dir / 'input.fasta', 'fasta')
-    # Set parameters
     cmd_line = [bin_path, '-align', str(tmp_dir / 'input.fasta'), '-output', str(tmp_dir / 'output.fasta')]
     runCommand(cmd_line)
     #sp.run(cmd_line, text=True, check=True)

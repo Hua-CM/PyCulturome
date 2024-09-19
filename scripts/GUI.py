@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PyCulturome.downstream.sanger import sanger_main
 from PyCulturome.downstream.update_database import update_db_main
 from PyCulturome.downstream.rename import rename_main
+from PyCulturome.downstream.validate_asv import validate_asv
 
 
 def resource_path(relative_path):
@@ -84,7 +85,7 @@ def sanger_tab():
              sg.I('tmp', key='-SANGER TMP_DIR-', size=30),
              sg.FolderBrowse(target='-SANGER TMP_DIR-')],
             [sg.T('BLAST directory (Optional):', size=30, pad=(0,0)), sg.I(key='-SANGER BLAST_DIR-', size=30), sg.FolderBrowse(target='-SANGER BLAST_DIR-')],
-            [sg.T('MUSCLE binary path (Optional):', size=30, pad=(0,0)), sg.I(key='-SANGER MUSCLE_BIN-', size=30), sg.FolderBrowse(target='-SANGER MUSCLE_BIN-')],
+            [sg.T('MUSCLE binary path (Optional):', size=30, pad=(0,0)), sg.I(key='-SANGER MUSCLE_BIN-', size=30), sg.FileBrowse(target='-SANGER MUSCLE_BIN-')],
             [sg.T('Threads (Optional):', size=30, pad=(0,0)), sg.I('4', key='-SANGER THREADS-')]
         ])
     main_col = [
@@ -94,17 +95,31 @@ def sanger_tab():
     return sg.Tab('Sanger', layout=main_col, expand_x = True)
 
 
+def validate_tab():
+    """The tab for updating existing bacteria database
+    """
+    row1 =sg.Frame('Data setting', [
+            [sg.T('The Sanger sequencing result path:',  size=25), sg.I('The summarised sanger table', key='-VALI SANGER-', size=35), sg.FileBrowse(target='-VALI SANGER-')],
+            [sg.T('The NGS plate-well-ASV info',  size=25), sg.I('a TSV file with plate/well/OTUID', key='-VALI NGS-', size=35), sg.FileBrowse(target='-VALI NGS-')],
+            [sg.T('The NGS sequence path', size=25), sg.I('The ASV sequence fasta path', key='-VALI SEQ-', size=35), sg.FileBrowse(target='-VALI SEQ-')],
+            [sg.T('Output table path:', size=25), sg.I(key='-VALI OUTPUT-', size=35), sg.FolderBrowse(target='-VALI OUTPUT-')]
+             ])
+    main_col = [[row1]]
+    return sg.Tab('Validate', layout=main_col, expand_x = True)
+
+
 def make_window():
     """
     Make the main window
     """
     sg.theme('SystemDefaultForReal')
     tab1 = sanger_tab()
-    tab2 = update_db_tab()
-    tab3 = rename_seq_tab()
+    tab2 = validate_tab()
+    tab3 = update_db_tab()
+    tab4 = rename_seq_tab()
 
     layout = [
-        [sg.TabGroup([[tab1, tab2, tab3]], key='-TASK-')],
+        [sg.TabGroup([[tab1, tab2, tab3, tab4]], key='-TASK-')],
         [sg.ML('',
                size=(60,8),
                k='-OUT-',
@@ -180,6 +195,14 @@ def main():
                         'meta_path': Path(values['-RENAME META-'])
                     }
                     rename_main(para_dict)
+                if values['-TASK-'] == 'Validate':
+                    para_dict = {
+                        'sanger_path': Path(values['-VALI SANGER-']),
+                        'ngs_path': Path(values['-VALI NGS-']),
+                        'seq_path': Path(values['-VALI SEQ-']),
+                        'out_path': Path(values['-VALI OUTPUT-']),
+                    }
+                    validate_asv(para_dict)
                 img = tk.PhotoImage(file=image_path)
                 print('Successful. Meow~')
                 window['-OUT-'].widget.image_create(tk.INSERT, image=img)
