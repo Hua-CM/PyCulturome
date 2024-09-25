@@ -10,14 +10,14 @@ from collections import defaultdict
 from itertools import combinations
 import logging
 from pathlib import Path
-import subprocess as sp
-import sys
 from typing import List
 
 
 from Bio import AlignIO
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
+
+from .utils import runCommand
 
 logger = logging.getLogger(__name__)
 
@@ -48,24 +48,6 @@ def calculate_distance(str1, str2, gap='-'):
     if str_short in str_long:
         return 0
     return 1
-
-
-def runCommand(cmd, timeout=None):
-    """ run shell command
-
-    @param cmd: command to execute
-    @param timeout: timeout for command execution
-
-    @return: (return code from command, command output)
-    """
-    p = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.STDOUT)
-    #output = ''
-    for line in p.stdout:
-        line = line.decode(encoding='utf-8').strip()
-        for _line in line.split('\n'):
-            sys.stdout.write(_line + '\n')
-            sys.stdout.flush()
-    p.wait(timeout)
 
 
 def muscle_align(seq_lst: List[SeqRecord], tmp_dir: Path, bin_path='muscle'):
@@ -100,7 +82,7 @@ def rm_dup_seqs(seq_rec_lst, tmp_dir, bin_path):
     aligned_seqs = muscle_align(seq_rec_lst, tmp_dir, bin_path)
     # hard cut for now 70 bp
     seq_dict = defaultdict(str)
-    rm_seq_lst = []
+    seq_rm_lst = []
     rm_id_lst = []
     for _seqrecord in aligned_seqs[:,70:-70]:
         if str(_seqrecord.seq) in seq_dict:
@@ -111,11 +93,12 @@ def rm_dup_seqs(seq_rec_lst, tmp_dir, bin_path):
     for str1, str2 in combinations(list(seq_dict.keys()), 2):
         try:
             if calculate_distance(str1, str2) == 0:
-                rm_seq_lst.append(str1 if len(str1) < len(str2) else str2)
+                seq_rm_lst.append(str1 if len(str1) < len(str2) else str2)
         except ValueError:
             # Handle the case where strings are of different lengths
             print(f"Skipping pair ({str1}, {str2}): Strings have different lengths")
     # filter sequences
-    rm_id_lst += [seq_dict.get(_seq) for _seq in rm_seq_lst]
+    rm_id_lst += [seq_dict.get(_seq) for _seq in seq_rm_lst]
     seq_keep_lst = [_seq for _seq in seq_rec_lst if _seq.id not in rm_id_lst]
-    return seq_keep_lst
+    seq_rm_lst = [_seq for _seq in seq_rec_lst if _seq.id in rm_id_lst]
+    return seq_keep_lst, seq_rm_lst

@@ -15,6 +15,7 @@ from PyCulturome.downstream.sanger import sanger_main
 from PyCulturome.downstream.update_database import update_db_main
 from PyCulturome.downstream.rename import rename_main
 from PyCulturome.downstream.validate_asv import validate_asv
+from PyCulturome.downstream.check_sanger import check_sanger_main
 
 
 class CustomFormatter(argparse.HelpFormatter):
@@ -48,6 +49,8 @@ def parse_args():
                         help='<file_path> The NCBI 16S rRNA gene database')
     sanger_parser.add_argument('-o', '--output', required=True, type=Path, dest='out_path',
                         help='<directory_path> The output directory path.')
+    sanger_parser.add_argument('--no_merge', type=bool, dest='is_merge', action='store_false', default=True,
+                        help='Not merge Sanger reads based on sample name')
     sanger_parser.add_argument('-f', '--fwr', type=str, dest='f_primer', default='27F',
                         help='<str> Forward primer name. Default: 27F')
     sanger_parser.add_argument('-r', '--rev', type=str, dest='r_primer', default='1492R',
@@ -69,10 +72,16 @@ def parse_args():
                         help='<file_path> The Sanger sequencing result path')
     validate_parser.add_argument('-n', '--ngs', required=True, type=Path, dest='ngs_path',
                         help='<file_path> The NGS plate-well-ASV info')
-    validate_parser.add_argument('-s', '--seq', required=True, type=Path, dest='seq_path',
+    validate_parser.add_argument('-s', '--seq', required=True, type=Path, dest='asv_path',
                         help='<file_path> The NGS sequence fasta path')
     validate_parser.add_argument('-o', '--out', required=True, type=Path, dest='out_path',
                         help='<file_path> The output table path')
+    validate_parser.add_argument('--threads', type=int, default=4,
+                        help='<int> Threads for BLAST. Default: 4')
+    validate_parser.add_argument('--tmp', type=Path, dest='tmp_dir', default=Path('tmp'),
+                        help='<int> Temperory directory path. Default: ./tmp')
+    validate_parser.add_argument('--blast', type=Path, dest='blast_dir', default=Path(''),
+                        help='<file_path> The path to BLAST binary directory (if it is not in PATH)')
     
     update_parser = sub_parser.add_parser(
         'update', help='Update the exsiting bacteria culture collection')
@@ -98,6 +107,20 @@ def parse_args():
                         help='<file_path> A TSV file contanins "oldid" and "newid".')
     rename_parser.add_argument('-o', '--output', required=True, type=Path, dest='out_path',
                         help='<file_path>  The converted sequence fasta path.')    
+    
+    compare_parser = sub_parser.add_parser(
+       'compare', help='Compare the results of the two Sanger sequencing experiments.' 
+    )
+    compare_parser.add_argument('--old', required=True, type=Path, dest='old_path',
+                        help='<file_path>  The old Sanger sequencing result table path. MUST WITH "seqid" and "seq" column')
+    compare_parser.add_argument('--new', required=True, type=Path, dest='new_path',
+                        help='<file_path> The new Sanger sequencing result table path. MUST WITH "seqid" and "seq" column')
+    compare_parser.add_argument('--r1', type=bool, dest='old_rp', action='store_true', default=False,
+                        help='Old sequence use reverse complement sequence')
+    compare_parser.add_argument('--r2',  type=bool, dest='new_rp', action='store_true', default=False,
+                        help='New sequence use reverse complement sequence')   
+    compare_parser.add_argument('-o', '--output', required=True, type=Path, dest='out_path',
+                        help='<file_path>  The output directory path.')  
 
     args = parser.parse_args()
     return args

@@ -20,6 +20,7 @@ from PyCulturome.downstream.sanger import sanger_main
 from PyCulturome.downstream.update_database import update_db_main
 from PyCulturome.downstream.rename import rename_main
 from PyCulturome.downstream.validate_asv import validate_asv
+from PyCulturome.downstream.check_sanger import check_sanger_main
 
 
 def resource_path(relative_path):
@@ -73,10 +74,13 @@ def sanger_tab():
     """
     row1 =sg.Frame('Data setting', [
             [sg.T('Sanger reads directory:',  size=20), sg.I(key='-SANGER INPUT-', size=40), sg.FolderBrowse(target='-SANGER INPUT-')],
+            [sg.CB('Merge Sanger reads bebased on sample', key='-SANGER MERGE-', default=True, size=40)],
             [sg.T('Forward primer name:', size=15), sg.I('27F', key='-PRIMER FORWARD-', size=10),
              sg.T('Reverse primer name:', size=15), sg.I('1492R', key='-PRIMER REVERSE-', size=10)],
             [sg.T('Extra characters in file names that need to be removed',  size=40), sg.I(key='-SANGER EXTRA-', size=25)],
             [sg.T('Meta table path:', size=20), sg.I(key='-SANGER META-', size=40), sg.FileBrowse(target='-SANGER META-')],
+            [sg.CB('Use "sample" as id', key='-SANGER ID1-', enable_events=True, default=False, size=30),
+             sg.CB('Use "row" and "column" as id', key='-SANGER ID2-', enable_events=True, default=True, size=30)],
             [sg.T('Output directory:', size=20), sg.I(key='-SANGER OUTPUT-', size=40), sg.FolderBrowse(target='-SANGER OUTPUT-')],
             [sg.T('NCBI 16S Database path:', size=20), sg.I(key='-SANGER DATABASE-', size=40), sg.FileBrowse(target='-SANGER DATABASE-')]
              ])
@@ -100,13 +104,36 @@ def validate_tab():
     """
     row1 =sg.Frame('Data setting', [
             [sg.T('The Sanger sequencing result path:',  size=25), sg.I('The summarised sanger table', key='-VALI SANGER-', size=35), sg.FileBrowse(target='-VALI SANGER-')],
-            [sg.T('The NGS plate-well-ASV info',  size=25), sg.I('a TSV file with plate/well/OTUID', key='-VALI NGS-', size=35), sg.FileBrowse(target='-VALI NGS-')],
-            [sg.T('The NGS sequence path', size=25), sg.I('The ASV sequence fasta path', key='-VALI SEQ-', size=35), sg.FileBrowse(target='-VALI SEQ-')],
+            [sg.T('The NGS plate-well-ASV info:',  size=25), sg.I('a TSV file with plate/well/OTUID', key='-VALI NGS-', size=35), sg.FileBrowse(target='-VALI NGS-')],
+            [sg.T('The NGS sequence path:', size=25), sg.I('The ASV sequence fasta path', key='-VALI SEQ-', size=35), sg.FileBrowse(target='-VALI SEQ-')],
             [sg.T('Output table path:', size=25), sg.I(key='-VALI OUTPUT-', size=35), sg.FolderBrowse(target='-VALI OUTPUT-')]
              ])
-    main_col = [[row1]]
+    row2 = sg.Frame('Global setting', [
+            [sg.T('Temporary directory path (Optional):', size=30, pad=(0,0)),
+             sg.I('tmp', key='-VALI TMP_DIR-', size=30),
+             sg.FolderBrowse(target='-VALI TMP_DIR-')],
+            [sg.T('BLAST directory (Optional):', size=30, pad=(0,0)), sg.I(key='-VALI BLAST_DIR-', size=30), sg.FolderBrowse(target='-VALI BLAST_DIR-')],
+            [sg.T('Threads (Optional):', size=30, pad=(0,0)), sg.I('4', key='-VALI THREADS-')]
+        ])
+    main_col = [
+        [row1],
+        [row2]
+    ]
     return sg.Tab('Validate', layout=main_col, expand_x = True)
 
+
+def compare_tab():
+    row1 =sg.Frame('Data setting', [
+            [sg.T('The old squence table path:',  size=25), sg.I('With seqid and seq column', key='-COMP OLD-', size=35), sg.FileBrowse(target='-COMP OLD-')],
+            [sg.CB('Old sequence use reverse complement sequence', key='-COMP OLDRP-', default=False, size=40)],
+            [sg.T('The new squence table path:',  size=25), sg.I('With seqid and seq column', key='-COMP NEW-', size=35), sg.FileBrowse(target='-COMP NEW-')],
+            [sg.CB('New sequence use reverse complement sequence', key='-COMP NEWRP-', default=False, size=40)],
+            [sg.T('Output directory path:', size=25), sg.I(key='-COMP OUTPUT-', size=35), sg.FolderBrowse(target='-COMP OUTPUT-')]
+             ])
+    main_col = [
+        [row1]
+    ]
+    return sg.Tab('Compare', layout=main_col, expand_x = True)
 
 def make_window():
     """
@@ -117,9 +144,10 @@ def make_window():
     tab2 = validate_tab()
     tab3 = update_db_tab()
     tab4 = rename_seq_tab()
+    tab5 = compare_tab()
 
     layout = [
-        [sg.TabGroup([[tab1, tab2, tab3, tab4]], key='-TASK-')],
+        [sg.TabGroup([[tab1, tab2, tab3, tab4, tab5]], key='-TASK-')],
         [sg.ML('',
                size=(60,8),
                k='-OUT-',
@@ -160,11 +188,16 @@ def main():
                 # for multiline box input. use "-* MULTIIN-" for invisible input box.
                 multi_key = ' '.join(event.split(' ')[:-1]) + '-'
                 window[multi_key].Update('\n'.join(values[event].split(';')) + '\n', append=True)
+            if event in ('-SANGER ID1-', '-SANGER ID2-'):
+                for key in ('-SANGER ID1-', '-SANGER ID2-'):
+                    if key != event:
+                        window[key].update(False)
             if event == 'run':
                 window['-OUT-'].update('')
                 if values['-TASK-'] == 'Sanger':
                     # PySimpleGUI need convert variable type manually
                     para_dict = {
+                        'is_merge': values['-SANGER MERGE-'],
                         'input_dir': Path(values['-SANGER INPUT-']),
                         'meta_path': Path(values['-SANGER META-']),
                         'extra_str': str(values['-SANGER EXTRA-']),
@@ -177,6 +210,10 @@ def main():
                         'muscle_path': Path(values['-SANGER MUSCLE_BIN-']), #
                         'threads': int(values['-SANGER THREADS-'])
                     }
+                    if values['-SANGER ID1-']: # use sample as ID
+                        para_dict['keep_raw'] = True
+                    else: # use row and column as ID
+                        para_dict['keep_raw'] = False
                     sanger_main(para_dict)
                 if values['-TASK-'] == 'Update':
                     para_dict = {
@@ -199,10 +236,22 @@ def main():
                     para_dict = {
                         'sanger_path': Path(values['-VALI SANGER-']),
                         'ngs_path': Path(values['-VALI NGS-']),
-                        'seq_path': Path(values['-VALI SEQ-']),
+                        'asv_path': Path(values['-VALI SEQ-']),
                         'out_path': Path(values['-VALI OUTPUT-']),
+                        'blast_dir': Path(values['-VALI BLAST_DIR-']),
+                        'tmp_dir': Path(values['-VALI TMP_DIR-']),
+                        'threads': Path(values['-VALI THREADS-'])
                     }
                     validate_asv(para_dict)
+                if values['-TASK-'] == 'Compare':
+                    para_dict = {
+                        'old_path': Path(values['-COMP OLD-']),
+                        'new_path': Path(values['-COMP NEW-']),
+                        'old_rp': values['-COMP OLDRP-'],
+                        'new_rp': values['-COMP NEWRP-'],
+                        'out_path': Path(values['-COMP OUTPUT-'])
+                    }
+                    check_sanger_main(para_dict)
                 img = tk.PhotoImage(file=image_path)
                 print('Successful. Meow~')
                 window['-OUT-'].widget.image_create(tk.INSERT, image=img)

@@ -8,22 +8,33 @@
 import logging
 from pathlib import Path
 
-from Bio.Align import PairwiseAligner
 from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
+from Bio.Seq import Seq
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from .utils import pairwise_align, runCommand
 
-def pairwise_align(seq1, seq2):
-    aligner = PairwiseAligner()
-    # 参数设置
-    aligner.mode = 'global'  # 16S rRNA基因比对通常使用全局比对
-    aligner.open_gap_score = -5  # 较高的gap打开罚分，这样更严格
-    aligner.extend_gap_score = -2  # 较高的gap延伸罚分
-    aligner.match_score = 2  # 较高的匹配得分
-    aligner.mismatch_score = -2  # 较高的不匹配罚分
-    alignments = aligner.align(seq1, seq2)
-    return alignments[0]
+logger = logging.getLogger(__name__)
+pd.options.display.float_format = '{:,.0f}'.format
+
+
+def run_blastn(query_path: Path, db_path: Path, out_path: Path, para_dict: dict):
+    blast_cmd = [para_dict['bin'],
+                 '-query', str(query_path),
+                 '-db', str(db_path),
+                 '-out', str(out_path)]
+    for _key, _val in para_dict.items():
+        if _key == 'bin':
+            continue
+        blast_cmd.append(f'-{_key}')
+        blast_cmd.append(str(_val))
+    runCommand(blast_cmd)
+
+
+def run_makeblastdb(in_path: Path, out_path: Path, bin_path):
+    blast_cmd = [str(bin_path), '-in', str(in_path), '-dbtype', 'nucl', '-out', str(out_path)]
+    runCommand(blast_cmd)
 
 
 def check_identical(aligned_seq1, aligned_seq2, identity: float = 0.99, gap='-'):
@@ -53,32 +64,87 @@ def validate_asv(para_dict):
     """Validate whether the 
     
     para_dict:
-        sanger_path (Path): The Sanger sequencing path.
+        sanger_path (Path): The Sanger sequencing result path. MUST WITH SEQUNECE
         ngs_path (Path): The NGS analysis result: purified_well.tsv.
-        seq_path (Path): The *.rep.fa.
+        asv_path (Path): The *.rep.fa.
         out_path (Path): The result output path.
+        blast_dir(Path): BLAST software directory
+        tmp_dir  (Path): temporary directory
+        threads  (int) : Number of threads
     """
     tb_sanger = pd.read_table(para_dict['sanger_path'])
     tb_ngs = pd.read_table(para_dict['ngs_path'])
-    asv_seq_dct = SeqIO.to_dict(SeqIO.parse(para_dict['seq_path'], 'fasta'))
+    asv_seq_dct = SeqIO.to_dict(SeqIO.parse(para_dict['asv_path'], 'fasta'))
     well_dct = {}
     for _idx, _row in tb_ngs.iterrows():
         well_dct.setdefault(_row['plate'] + _row['well'], _row['OTUID'])
     check_res_lst = []
+    inconsistent_seq_lst = []
     for _idx, _row in tb_sanger.iterrows():
         raw_well = _row['plate'] + _row['well']
         try:
             seq_sanger = _row['seq']
             seq_ngs = asv_seq_dct.get(well_dct.get(raw_well))
             alignment = pairwise_align(seq_sanger, seq_ngs)
+            consistent = check_identical(alignment[0], alignment[1])
             check_res_lst.append({'plate': _row['plate'],
                                   'well' : _row['well'],
-                                  'consistency': check_identical(alignment[0], alignment[1])})
+                                  'clone': _row['clone'],
+                                  'consistency': consistent})
+            if consistent == 0:
+                inconsistent_seq_lst.append(
+                    SeqRecord(
+                        id = '_'.join([_row['plate'], _row['well'], str(_row['clone'])]),
+                        seq=Seq(seq_sanger),
+                        description= '',
+                        name=''
+                    )
+                )
         except:
             logger.info(f'{raw_well} not in NGS result, please check')
     tb_validate = pd.DataFrame(check_res_lst)
-    tb_sanger = tb_sanger.merge(tb_validate)
-    # move seq to the last
+    
+    #  check inconsistent squences 
+    # #Extract inconsistent sequences
+    if not para_dict['tmp_dir'].exists():
+        para_dict['tmp_dir'].mkdir()
+    run_makeblastdb(para_dict['asv_path'],
+                    para_dict['tmp_dir'] / 'asv_db',
+                    str(para_dict['blast_dir'] / 'makeblastdb'))
+    query_seq_path = para_dict['tmp_dir'] / 'query.fasta'
+    SeqIO.write(inconsistent_seq_lst, query_seq_path, 'fasta')
+    blastn_para_dct = {
+        'bin': str(para_dict['blast_dir'] / 'blastn'),
+        'evalue': 1e-5,
+        'outfmt': '6 qacc sacc slen length pident evalue',
+        'max_hsps': 1,
+        'max_target_seqs': 1,
+        'num_threads': str(para_dict['threads']),
+    }
+    run_blastn(query_seq_path,
+               para_dict['tmp_dir'] / 'asv_db',
+               para_dict['tmp_dir'] / 'asv_res.tsv',
+               blastn_para_dct)
+    # parse Sequence query against ASV result
+    tb_res_asv= pd.read_table(para_dict['tmp_dir'] / 'asv_res.tsv',
+                              names=['queryid', 'subjectid', 'slen', 'alignlen',
+                                     'identity', 'evalue'])
+    inconsistent_res_lst = []
+    use_ncbi_lst = []
+    for _idx, _row in tb_res_asv.iterrows():
+        if (_row['slen'] == _row['alignlen']) and (_row['identity'] == 100):
+            inconsistent_res_lst.append({'seqid': _row['queryid'],
+                                         'TrueOTUID': _row['subjectid']})
+        else:
+            use_ncbi_lst.append(_row['queryid'])
+    # Use sanger NCBI result directly.
+    tb_inconsistent = pd.DataFrame(inconsistent_res_lst)
+    tb_sanger = tb_sanger.merge(tb_ngs[['plate', 'well', 'OTUID']], how='left').merge(tb_validate)
+    tb_sanger = tb_sanger.merge(tb_inconsistent, how='left')
+    tb_sanger.loc[tb_sanger['seqid'].isin(use_ncbi_lst), 'TrueOTUID'] = tb_sanger.loc[tb_sanger['seqid'].isin(use_ncbi_lst), 'subjectid']
+    tb_sanger.loc[tb_sanger['TrueOTUID'].isna(), 'TrueOTUID'] = tb_sanger.loc[tb_sanger['TrueOTUID'].isna(), 'OTUID']
+
+    # move seq column to the last
     columns = list(tb_sanger.columns)
     columns.append(columns.pop(columns.index('seq')))
     tb_sanger = tb_sanger[columns]

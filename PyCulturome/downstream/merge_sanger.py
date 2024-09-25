@@ -50,8 +50,18 @@ def read_abi(file_path: Path):
     base_channels = ['G', 'A', 'T', 'C']
     new_seq = ''.join([base_channels[idx] for idx in max_indices])
     seq_rec = copy(raw_rec)
-    seq_rec.seq = Seq(new_seq)
-    return seq_rec
+    try:
+        """In very rare cases, the length of new sequence
+        is unequal to the raw sequence and cannot be assigned to the new_seq
+        
+        Returns:
+            _type_: _description_
+        """
+        seq_rec.seq = Seq(new_seq)
+        return seq_rec
+    except ValueError:
+        return raw_rec
+    
 
 def read_seq(file_path: Path):
     """Read sequence from file. All of fasta/seq/ab1 is OK.
@@ -161,7 +171,7 @@ def merge_sanger(seq1_path: Path, seq2_path: Path, seq_id='merged'):
     direction of read1 as the forward orientation.
 
     Args:
-        seq1_path (Path): The read1 path
+        seq1_path (Path): The read1 path (Use as the forward read)
         seq2_path (Path): The read2 path
     """
     seq1_str = read_seq(seq1_path)
