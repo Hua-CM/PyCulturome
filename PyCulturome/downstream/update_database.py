@@ -86,7 +86,7 @@ def parse_args():
 def update_db_main(para_dict):
     """_summary_
 
-    Args:
+    para_dict:
         db_path (Path): _description_
         in_path (Path): _description_
         out_path (Path): _description_

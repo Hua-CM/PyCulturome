@@ -5,7 +5,6 @@
 # @Usage   :   Parse Sanger sequencing result for 96-well plates
 # @Note    :
 # @E-mail  :   njbxhzy@hotmail.com
-import argparse
 from collections import defaultdict
 import logging
 from pathlib import Path
@@ -103,6 +102,7 @@ def sanger_main(para_dict):
     query_seq_path = Path(para_dict['tmp_dir'] / 'all_sample_merged.fa')
     SeqIO.write(sample_seq_lst, query_seq_path,'fasta')
     tb_seq = pd.DataFrame([{'queryid': _seq.id, 'seq': _seq.seq} for _seq in sample_seq_lst])
+    tb_seq['queryid']= tb_seq['queryid'].astype(str)
     logger.info('Merge Sanger sequencing reads. Done!')
     # Blast
     blast_cmd = NcbiblastnCommandline(
@@ -110,7 +110,7 @@ def sanger_main(para_dict):
         query = query_seq_path,
         db=para_dict['db_path'],
         evalue=1e-5,
-        outfmt="6 qacc sacc qlen slen length qstart qend sstart send ssciname staxid pident evalue",
+        outfmt="6 qacc sacc qlen slen length ssciname staxid pident evalue",
         max_hsps=1,
         max_target_seqs=20,
         num_threads=para_dict['threads'],
@@ -119,15 +119,15 @@ def sanger_main(para_dict):
     blast_cmd()
     tb_blast= pd.read_table(para_dict['tmp_dir'] / 'blast.out',
                   names=['queryid', 'subjectid', 'qlen', 'slen', 'alignlen',
-                         'qstart', 'qend', 'sstart', 'send',
                          'species', 'taxid', 'identity', 'evalue'])
+    tb_blast['queryid']= tb_blast['queryid'].astype(str)
     logger.info('BLAST against NCBI 16S rRNA gene database. Done!')
     # parse meta information
     tb_meta = pd.read_table(para_dict['meta_path'])
     if not para_dict['keep_raw']:
         tb_meta['queryid'] = tb_meta['row'] + tb_meta['column'].astype(str)
     else:
-        tb_meta['queryid'] = tb_meta['sample']
+        tb_meta['queryid'] = tb_meta['sample'].astype(str)
     # merge
     tb_out = tb_seq.merge(tb_meta, how='left').merge(tb_blast, how='left')
     columns = list(tb_out.columns)
@@ -142,14 +142,12 @@ def sanger_main(para_dict):
     tb_dedup = tb_out.sort_values(by='evalue').drop_duplicates(subset=['queryid'])
     tb_dedup['seqid'] = tb_dedup['plate'].astype(str) + '_' + tb_dedup['well'].astype(str) + '_' + tb_dedup['clone'].astype(str)
     # construct the list of sequences
-    seq_lst = []
-    for _idx, _row in tb_dedup.iterrows():
-        seq_lst.append(
-            SeqRecord(id=_row['seqid'],
+    seq_lst = [SeqRecord(id=_row['seqid'],
                     seq=Seq(_row['seq']),
                     description=''
-                    )
-        )
+                    ) for _idx, _row in tb_dedup.iterrows()]
+    # Move the function of removing duplicated isolates to an independent module. 
+    """
     keep_seq_lst, rm_seq_lst = rm_dup_seqs(seq_lst, para_dict['tmp_dir'], para_dict['muscle_path'])
     rm_seq_id_lst = [_.id for _ in rm_seq_lst]
     for _seq_id in rm_seq_id_lst:
@@ -157,8 +155,9 @@ def sanger_main(para_dict):
     # Also output non-redundant table
     tb_dedup['ToIsolate'] = 0
     tb_dedup.loc[~tb_dedup['seqid'].isin(rm_seq_id_lst), 'ToIsolate'] = 1
+    """
     columns = list(tb_dedup.columns)
-    columns.append(columns.pop(columns.index('seq')))
+    columns.append(columns.pop(columns.index('seq'))) # Move seq to the last column
     tb_dedup = tb_dedup[columns]
     tb_dedup.to_csv(para_dict['out_path'] / 'top_hit.tsv',
                     sep='\t',
@@ -169,9 +168,11 @@ def sanger_main(para_dict):
         para_dict['out_path'] / 'All_sequences.fasta',
         'fasta'
     )
+    """
     SeqIO.write(
         keep_seq_lst,
         para_dict['out_path'] / 'Bacteria_ToIsolate.fasta',
         'fasta')
+    """
     logger.info('Output fasta sequence. Done!')
     #shutil.rmtree(para_dict['tmp_dir'])

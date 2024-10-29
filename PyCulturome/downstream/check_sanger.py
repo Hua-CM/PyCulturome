@@ -6,8 +6,6 @@
 # @Note    :   
 # @E-mail  :   njbxhzy@hotmail.com
 from collections import defaultdict
-import re
-from pathlib import Path
 
 from Bio.Align import PairwiseAligner
 from Bio.Seq import Seq
@@ -41,8 +39,16 @@ def format_alignment_custom(seq1id, seq2id, align1, align2, line_length=100):
 
 
 def compare_sanger(new_seq: SeqRecord, old_seq: SeqRecord):
+    # 半全局比对
     aligner = PairwiseAligner()
-    aligner.mode = 'global'
+    aligner.mode = 'local'
+    aligner.match_score = 1
+    aligner.mismatch_score = -1
+    aligner.open_gap_score = -0.5
+    aligner.extend_gap_score = -0.1
+    aligner.target_end_gap_score = 0.0
+    aligner.query_end_gap_score = 0.0
+
     alignments = aligner.align(new_seq.seq, old_seq.seq)
     return format_alignment_custom(new_seq.id, old_seq.id, *alignments[0])
 
@@ -73,7 +79,7 @@ def check_sanger_main(para_dct):
                             description='')
         if old_seq := old_seq_dct.get(_row['seqid']):
             old_seq =  SeqRecord(id=f'{_row['seqid']}_old',
-                                 seq = Seq(old_seq).reverse_complement() if para_dct['old_rp'] else Seq(_row['seq']),
+                                 seq = Seq(old_seq).reverse_complement() if para_dct['old_rp'] else Seq(old_seq),
                                  description='')
             compare_res_text = compare_sanger(new_seq, old_seq)
             (para_dct['out_path'] / f"{_row['seqid']}.aligned.txt").write_text(

@@ -64,7 +64,7 @@ def validate_asv(para_dict):
     """Validate whether the 
     
     para_dict:
-        sanger_path (Path): The Sanger sequencing result path. MUST WITH SEQUNECE
+        sanger_path (Path): The summarized Sanger sequencing result path. MUST WITH *seq* column
         ngs_path (Path): The NGS analysis result: purified_well.tsv.
         asv_path (Path): The *.rep.fa.
         out_path (Path): The result output path.
@@ -103,46 +103,50 @@ def validate_asv(para_dict):
         except:
             logger.info(f'{raw_well} not in NGS result, please check')
     tb_validate = pd.DataFrame(check_res_lst)
-    
+    tb_sanger = tb_sanger.merge(tb_ngs[['plate', 'well', 'OTUID']], how='left').merge(tb_validate)
+
+    if inconsistent_seq_lst:
     #  check inconsistent squences 
     # #Extract inconsistent sequences
-    if not para_dict['tmp_dir'].exists():
-        para_dict['tmp_dir'].mkdir()
-    run_makeblastdb(para_dict['asv_path'],
-                    para_dict['tmp_dir'] / 'asv_db',
-                    str(para_dict['blast_dir'] / 'makeblastdb'))
-    query_seq_path = para_dict['tmp_dir'] / 'query.fasta'
-    SeqIO.write(inconsistent_seq_lst, query_seq_path, 'fasta')
-    blastn_para_dct = {
-        'bin': str(para_dict['blast_dir'] / 'blastn'),
-        'evalue': 1e-5,
-        'outfmt': '6 qacc sacc slen length pident evalue',
-        'max_hsps': 1,
-        'max_target_seqs': 1,
-        'num_threads': str(para_dict['threads']),
-    }
-    run_blastn(query_seq_path,
-               para_dict['tmp_dir'] / 'asv_db',
-               para_dict['tmp_dir'] / 'asv_res.tsv',
-               blastn_para_dct)
-    # parse Sequence query against ASV result
-    tb_res_asv= pd.read_table(para_dict['tmp_dir'] / 'asv_res.tsv',
-                              names=['queryid', 'subjectid', 'slen', 'alignlen',
-                                     'identity', 'evalue'])
-    inconsistent_res_lst = []
-    use_ncbi_lst = []
-    for _idx, _row in tb_res_asv.iterrows():
-        if (_row['slen'] == _row['alignlen']) and (_row['identity'] == 100):
-            inconsistent_res_lst.append({'seqid': _row['queryid'],
-                                         'TrueOTUID': _row['subjectid']})
-        else:
-            use_ncbi_lst.append(_row['queryid'])
-    # Use sanger NCBI result directly.
-    tb_inconsistent = pd.DataFrame(inconsistent_res_lst)
-    tb_sanger = tb_sanger.merge(tb_ngs[['plate', 'well', 'OTUID']], how='left').merge(tb_validate)
-    tb_sanger = tb_sanger.merge(tb_inconsistent, how='left')
-    tb_sanger.loc[tb_sanger['seqid'].isin(use_ncbi_lst), 'TrueOTUID'] = tb_sanger.loc[tb_sanger['seqid'].isin(use_ncbi_lst), 'subjectid']
-    tb_sanger.loc[tb_sanger['TrueOTUID'].isna(), 'TrueOTUID'] = tb_sanger.loc[tb_sanger['TrueOTUID'].isna(), 'OTUID']
+        if not para_dict['tmp_dir'].exists():
+            para_dict['tmp_dir'].mkdir()
+        run_makeblastdb(para_dict['asv_path'],
+                        para_dict['tmp_dir'] / 'asv_db',
+                        str(para_dict['blast_dir'] / 'makeblastdb'))
+        query_seq_path = para_dict['tmp_dir'] / 'query.fasta'
+        SeqIO.write(inconsistent_seq_lst, query_seq_path, 'fasta')
+        blastn_para_dct = {
+            'bin': str(para_dict['blast_dir'] / 'blastn'),
+            'evalue': 1e-5,
+            'outfmt': '6 qacc sacc slen length pident evalue',
+            'max_hsps': 1,
+            'max_target_seqs': 1,
+            'num_threads': str(para_dict['threads']),
+        }
+        run_blastn(query_seq_path,
+                para_dict['tmp_dir'] / 'asv_db',
+                para_dict['tmp_dir'] / 'asv_res.tsv',
+                blastn_para_dct)
+        # parse Sequence query against ASV result
+        tb_res_asv= pd.read_table(para_dict['tmp_dir'] / 'asv_res.tsv',
+                                names=['queryid', 'subjectid', 'slen', 'alignlen',
+                                        'identity', 'evalue'])
+        inconsistent_res_lst = []
+        use_ncbi_lst = []
+        for _idx, _row in tb_res_asv.iterrows():
+            if (_row['slen'] == _row['alignlen']) and (_row['identity'] == 100):
+                inconsistent_res_lst.append({'seqid': _row['queryid'],
+                                            'TrueOTUID': _row['subjectid']})
+            else:
+                use_ncbi_lst.append(_row['queryid'])
+        # Use sanger NCBI result directly.
+        tb_inconsistent = pd.DataFrame(inconsistent_res_lst)
+        tb_sanger = tb_sanger.merge(tb_inconsistent, how='left')
+        if use_ncbi_lst:
+            tb_sanger.loc[tb_sanger['seqid'].isin(use_ncbi_lst), 'TrueOTUID'] = tb_sanger.loc[tb_sanger['seqid'].isin(use_ncbi_lst), 'subjectid']
+        tb_sanger.loc[tb_sanger['TrueOTUID'].isna(), 'TrueOTUID'] = tb_sanger.loc[tb_sanger['TrueOTUID'].isna(), 'OTUID']
+    else:
+        tb_sanger['TrueOTUID'] = tb_sanger['OTUID']
 
     # move seq column to the last
     columns = list(tb_sanger.columns)

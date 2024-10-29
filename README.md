@@ -100,6 +100,7 @@ The NCBI 16S rRNA gene database (16S_ribosomal_RNA.tar.gz) could be downloaded f
 
 1. Compare and/or combine multiple libraris
 2. Add parameter support for additional primers and barcodes.
+3. Make the output table iterative development
 
 ## Reference
 [Culturome-YongxinLiu](https://github.com/YongxinLiu/Culturome/tree/master)

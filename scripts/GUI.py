@@ -16,15 +16,16 @@ import PySimpleGUI as sg
 import tkinter as tk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from PyCulturome.downstream.sanger import sanger_main
+from PyCulturome.downstream.summary_sanger import sanger_main
 from PyCulturome.downstream.update_database import update_db_main
 from PyCulturome.downstream.rename import rename_main
 from PyCulturome.downstream.validate_asv import validate_asv
 from PyCulturome.downstream.check_sanger import check_sanger_main
+from PyCulturome.downstream.rm_dups import iden_isolate_main
 
 
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
+    """ Get absolute path to resource, works for dev and for PyInstaller"""
     try:
         # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = Path(sys._MEIPASS)
@@ -69,8 +70,8 @@ def update_db_tab():
     return sg.Tab('Update', layout=main_col, expand_x = True)
 
 
-def sanger_tab():
-    """The tab for analyzing Sanger sequencing result
+def summary_tab():
+    """The tab for summarizing Sanger sequencing result
     """
     row1 =sg.Frame('Data setting', [
             [sg.T('Sanger reads directory:',  size=20), sg.I(key='-SANGER INPUT-', size=40), sg.FolderBrowse(target='-SANGER INPUT-')],
@@ -89,21 +90,20 @@ def sanger_tab():
              sg.I('tmp', key='-SANGER TMP_DIR-', size=30),
              sg.FolderBrowse(target='-SANGER TMP_DIR-')],
             [sg.T('BLAST directory (Optional):', size=30, pad=(0,0)), sg.I(key='-SANGER BLAST_DIR-', size=30), sg.FolderBrowse(target='-SANGER BLAST_DIR-')],
-            [sg.T('MUSCLE binary path (Optional):', size=30, pad=(0,0)), sg.I(key='-SANGER MUSCLE_BIN-', size=30), sg.FileBrowse(target='-SANGER MUSCLE_BIN-')],
             [sg.T('Threads (Optional):', size=30, pad=(0,0)), sg.I('4', key='-SANGER THREADS-')]
         ])
     main_col = [
         [row1],
         [row2]
     ]
-    return sg.Tab('Sanger', layout=main_col, expand_x = True)
+    return sg.Tab('Summary', layout=main_col, expand_x = True)
 
 
 def validate_tab():
     """The tab for updating existing bacteria database
     """
     row1 =sg.Frame('Data setting', [
-            [sg.T('The Sanger sequencing result path:',  size=25), sg.I('The summarised sanger table', key='-VALI SANGER-', size=35), sg.FileBrowse(target='-VALI SANGER-')],
+            [sg.T('The summarised Sanger sequencing table path:',  size=25), sg.I('', key='-VALI SANGER-', size=35), sg.FileBrowse(target='-VALI SANGER-')],
             [sg.T('The NGS plate-well-ASV info:',  size=25), sg.I('a TSV file with plate/well/OTUID', key='-VALI NGS-', size=35), sg.FileBrowse(target='-VALI NGS-')],
             [sg.T('The NGS sequence path:', size=25), sg.I('The ASV sequence fasta path', key='-VALI SEQ-', size=35), sg.FileBrowse(target='-VALI SEQ-')],
             [sg.T('Output table path:', size=25), sg.I(key='-VALI OUTPUT-', size=35), sg.FolderBrowse(target='-VALI OUTPUT-')]
@@ -135,19 +135,50 @@ def compare_tab():
     ]
     return sg.Tab('Compare', layout=main_col, expand_x = True)
 
+
+def isolate_tab():
+    row1 =sg.Frame('Data setting', [
+            [sg.T('The summarised table path:',  size=25),
+             sg.I('The table with plate/well/clone/seq', key='-ISO SANGER-', size=35),
+             sg.FileBrowse(target='-ISO SANGER-')],
+            [sg.T('The existing database path:',  size=25),
+             sg.I('The table with plate/well/clone/seq/ToIsolate',
+                  key='-ISO EXIST-',
+                  size=35),
+             sg.FileBrowse(target='-ISO EXIST-')],
+            [sg.T('Output table path:', size=25),
+             sg.I(key='-ISO OUTPUT-', size=35),
+             sg.FolderBrowse(target='-ISO OUTPUT-')]
+             ])
+    row2 = sg.Frame('Global setting', [
+            [sg.T('Temporary directory path (Optional):', size=30, pad=(0,0)),
+             sg.I('tmp', key='-ISO TMP_DIR-', size=30),
+             sg.FolderBrowse(target='-ISO TMP_DIR-')],
+            [sg.T('MUSCLE binary path (Optional):', size=30, pad=(0,0)),
+             sg.I(key='-ISO MUSCLE_BIN-'),
+             sg.FileBrowse(target='-ISO MUSCLE_BIN-')]
+        ])
+    main_col = [
+        [row1],
+        [row2]
+    ]
+    return sg.Tab('Isolation', layout=main_col, expand_x = True)    
+
+
 def make_window():
     """
     Make the main window
     """
     sg.theme('SystemDefaultForReal')
-    tab1 = sanger_tab()
+    tab1 = summary_tab()
     tab2 = validate_tab()
     tab3 = update_db_tab()
     tab4 = rename_seq_tab()
     tab5 = compare_tab()
+    tab6 = isolate_tab()
 
     layout = [
-        [sg.TabGroup([[tab1, tab2, tab3, tab4, tab5]], key='-TASK-')],
+        [sg.TabGroup([[tab1, tab2, tab3, tab4, tab5, tab6]], key='-TASK-')],
         [sg.ML('',
                size=(60,8),
                k='-OUT-',
@@ -194,7 +225,7 @@ def main():
                         window[key].update(False)
             if event == 'run':
                 window['-OUT-'].update('')
-                if values['-TASK-'] == 'Sanger':
+                if values['-TASK-'] == 'Summary':
                     # PySimpleGUI need convert variable type manually
                     para_dict = {
                         'is_merge': values['-SANGER MERGE-'],
@@ -207,7 +238,6 @@ def main():
                         'out_path': Path(values['-SANGER OUTPUT-']),
                         'tmp_dir': Path(values['-SANGER TMP_DIR-']),
                         'blast_dir': Path(values['-SANGER BLAST_DIR-']),
-                        'muscle_path': Path(values['-SANGER MUSCLE_BIN-']), #
                         'threads': int(values['-SANGER THREADS-'])
                     }
                     if values['-SANGER ID1-']: # use sample as ID
@@ -252,6 +282,19 @@ def main():
                         'out_path': Path(values['-COMP OUTPUT-'])
                     }
                     check_sanger_main(para_dict)
+                if values['-TASK-'] == 'Isolation':
+                    if values['-ISO EXIST-'] in ['The table with plate/well/clone/seq/ToIsolate', '']:
+                        _ext_path = None    
+                    else:
+                        _ext_path = Path(values['-ISO EXIST-'])
+                    para_dict = {
+                        'sanger_path': Path(values['-ISO SANGER-']),
+                        'existing_path': _ext_path,
+                        'out_path': Path(values['-ISO OUTPUT-']),
+                        'muscle_path': Path(values['-ISO MUSCLE_BIN-']),
+                        'tmp_dir': Path(values['-ISO TMP_DIR-'])
+                    }
+                    iden_isolate_main(para_dict)
                 img = tk.PhotoImage(file=image_path)
                 print('Successful. Meow~')
                 window['-OUT-'].widget.image_create(tk.INSERT, image=img)

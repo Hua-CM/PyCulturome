@@ -11,11 +11,12 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from PyCulturome.downstream.sanger import sanger_main
+from PyCulturome.downstream.summary_sanger import sanger_main
 from PyCulturome.downstream.update_database import update_db_main
 from PyCulturome.downstream.rename import rename_main
 from PyCulturome.downstream.validate_asv import validate_asv
 from PyCulturome.downstream.check_sanger import check_sanger_main
+from PyCulturome.downstream.rm_dups import iden_isolate_main
 
 
 class CustomFormatter(argparse.HelpFormatter):
@@ -40,7 +41,7 @@ def parse_args():
     sub_parser.required = True
 
     sanger_parser = sub_parser.add_parser(
-        'sanger', help='summary all Sanger sequencing results in a directory')
+        'summary', help='Summary all Sanger sequencing results in a directory')
     sanger_parser.add_argument('-i', '--input', required=True, type=Path, dest='input_dir',
                         help='<file_path> Directory containing Sanger sequencing reads end with ".ab1".')
     sanger_parser.add_argument('-m', '--meta', required=True, type=Path, dest='meta_path',
@@ -59,8 +60,6 @@ def parse_args():
                         help='<str> Extra characters in file names that need to be removed')
     sanger_parser.add_argument('--blast', type=Path, dest='blast_dir', default=Path(''),
                         help='<file_path> The path to BLAST binary directory (if it is not in PATH)')
-    sanger_parser.add_argument('--muscle', type=Path, dest='muscle_path', default=Path('muscle'),
-                        help='<file_path> The path to MUSCLE5 (if it is not in PATH)')
     sanger_parser.add_argument('--threads', type=int, default=4,
                         help='<int> Threads for BLAST. Default: 4')
     sanger_parser.add_argument('--tmp', type=Path, dest='tmp_dir', default=Path('tmp'),
@@ -120,8 +119,20 @@ def parse_args():
     compare_parser.add_argument('--r2',  type=bool, dest='new_rp', action='store_true', default=False,
                         help='New sequence use reverse complement sequence')   
     compare_parser.add_argument('-o', '--output', required=True, type=Path, dest='out_path',
-                        help='<file_path>  The output directory path.')  
-
+                        help='<file_path>  The output directory path.')
+    
+    isolate_parser = sub_parser.add_parser(
+        'isolate', help='Determine strains to isolate (remove duplicated strains)')
+    isolate_parser.add_argument('-i', '--input', required=True, type=Path, dest='sanger_path',
+                        help='<file_path> The summarised table path. A table with plate/well/clone/seq columns')
+    isolate_parser.add_argument('-d', '--db', type=Path, dest='existing_path', default=None,
+                        help='<file_path> The existing database path. A table with plate/well/clone/seq/ToIsolate columns')
+    isolate_parser.add_argument('-o', '--output', required=True, type=Path, dest='out_path',
+                        help='<directory_path> The output directory path.')
+    isolate_parser.add_argument('--muscle', type=Path, dest='muscle_path', default=Path('muscle'),
+                        help='<file_path> The path to MUSCLE5 (if it is not in PATH)')
+    isolate_parser.add_argument('--tmp', type=Path, dest='tmp_dir', default=Path('tmp'),
+                        help='<int> Temperory directory path. Default: ./tmp')
     args = parser.parse_args()
     return args
 
@@ -134,10 +145,11 @@ def main(para_dct):
     stream_handler.setFormatter(formatter)
     logger.addHandler(stream_handler)
 
-    func_dct = {'sanger': sanger_main,
+    func_dct = {'summary': sanger_main,
                 'validate': validate_asv,
                 'update': update_db_main,
-                'rename': rename_main}
+                'rename': rename_main,
+                'isolate': iden_isolate_main}
     func = func_dct.get(para_dct['command'])
     func(para_dct)
 
